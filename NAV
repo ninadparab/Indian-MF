@@ -1,0 +1,116 @@
+
+# Importing the packages
+
+import urllib.request
+from bs4 import BeautifulSoup
+import pandas as pd
+import numpy as np
+import csv
+import datetime
+
+# Range of pages on AMFI website for MF families
+
+a=range(1,70)  
+
+
+# Creating range of urls, one for each MF family
+
+string1 = "http://portal.amfiindia.com/DownloadNAVHistoryReport_Po.aspx?mf="
+string2 = "&tp=1&frmdt=01-Jan-2012&todt=28-Sep-2018"
+urls = [string1+(str(x))+string2 for x in a]
+
+
+# Reading data from each page and scraping it
+
+i=0
+lines=[]
+for url in urls:
+    page = urllib.request.urlopen(url)
+    soup = BeautifulSoup(page, "html.parser")
+    content= urllib.request.urlopen(url).read()
+    lines = lines + content.decode().split('\n')
+
+
+# Converting the strings to a table NAV
+
+A=[]
+B=[]
+C=[]
+D=[]
+
+for line in lines[1:]:
+    if len(line.split(';'))==6:
+        A.append(line.split(';')[0]) 
+        B.append(line.split(';')[1])
+        C.append(line.split(';')[2])
+        D.append(line.split(';')[5])
+
+NAV=pd.DataFrame(A,columns=['Scheme Code'])
+NAV['Scheme Name']=B
+NAV['NAV']=C
+NAV['Date']=D
+NAV.index=NAV['Scheme Code']
+NAV = NAV[['NAV','Date']]
+NAV = NAV[NAV.duplicated()==False]
+NAV = NAV[1:].replace('\r','', regex=True)
+NAV.loc[:,'Date']= pd.to_datetime(NAV.loc[:,'Date'])
+NAV
+
+
+# Converting the table into a dataframe format with MF on x axis and dates on y axis
+
+NAV[['NAV','Date']].pivot(columns='Date', values='NAV')
+
+
+# Code for getting daily data, which can be appended to the historical data
+# This section to be used only if one intends to update the historical table on the daily basis
+
+url1 = "https://www.amfiindia.com/spages/NAVAll.txt"
+page1 = urllib.request.urlopen(url1)
+soup1 = BeautifulSoup(page1, "html.parser")
+content1=urllib.request.urlopen(url1).read()
+lines1 = content1.decode().split('\n')
+A1=[]
+B1=[]
+C1=[]
+D1=[]
+
+for line in lines1[1:]:
+    if line.find(';') !=-1:
+        A1.append(line.split(';')[0]) 
+        B1.append(line.split(';')[3])
+        C1.append(line.split(';')[4])
+        D1.append(line.split(';')[5])
+NAV1=pd.DataFrame(A1,columns=['Scheme Code'])
+NAV1['Scheme Name']=B1
+NAV1['NAV']=C1
+NAV1['Date']=D1
+
+NAV1.index=NAV1['Scheme Code']
+NAV1 = NAV1[['NAV','Date']]
+NAV1 = NAV1.replace('\r','', regex=True)
+Heading = pd.to_datetime(NAV1['Date'][1])
+NAV1.columns = [Heading, 'Date']
+NAV1.drop('Date', 1, inplace = True)
+NAV1
+
+
+# Joining the past data with current daily data
+# This section to be used only if one intends to update the historical table on the daily basis
+
+AllNAV = NAV[['NAV','Date']].pivot(columns='Date', values='NAV').join(NAV1)
+AllNAV
+
+
+# This code fills the data on the missing days (weekends/holidays) with the latest available NAV
+
+AllNAV = AllNAV.reindex_axis(pd.date_range("2017-01-01", pd.to_datetime('today')) , axis=1, method="ffill")
+
+
+# Calculating histoical NAV for return calculations
+
+AllNAV['7day'] = AllNAV[pd.to_datetime('today')- pd.DateOffset(days=7)]
+AllNAV['1 month'] = AllNAV[pd.to_datetime('today')- pd.DateOffset(months=1)]
+AllNAV['3 months'] = AllNAV[pd.to_datetime('today')- pd.DateOffset(months=3)]
+AllNAV['6 months'] = AllNAV[pd.to_datetime('today')- pd.DateOffset(months=6)]
+AllNAV['1 year'] = AllNAV[pd.to_datetime('today')- pd.DateOffset(years=1)]
