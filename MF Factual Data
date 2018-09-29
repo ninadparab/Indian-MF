@@ -1,0 +1,69 @@
+# Importing required packages
+
+import urllib.request
+from bs4 import BeautifulSoup
+import pandas as pd
+import numpy as np
+
+
+# Scraping moneycontrol site to get the list of Fund Houses (MF Families)
+# 38 fund houses as on date
+
+url = "http://www.moneycontrol.com/mutual-funds/amc-assets-monitor"
+page = urllib.request.urlopen(url)
+soup = BeautifulSoup(page, "html.parser")
+
+
+# Converting the data of fundhouses into dataframe
+
+A=[]
+B=[]
+FundHouses=soup.find_all('table', class_='tblfund1')[0]
+for row in FundHouses.findAll("tr"):
+        cells = row.findAll('td')
+        if len(cells)==6:
+            if cells[0].a:
+                A.append(cells[0].find(text=True))
+                B.append(cells[0].a['href'])
+
+FundHouses.df=pd.DataFrame(A,columns=['Fund House'])
+FundHouses.df['URL']=B
+
+FundHouses.df['URL'] = "http://www.moneycontrol.com"+ FundHouses.df['URL']
+
+# Getting list of all the funds across fundhouses and basic funds data such as Category and Asset Under Management
+# 2557 funds to date (Sep 2018)
+
+A=[]
+B=[]
+C=[]
+D=[]
+
+for url in FundHouses.df['URL'].tolist():
+    page = urllib.request.urlopen(url)
+    soup = BeautifulSoup(page, "html.parser")
+    Funds = soup.find_all('table')[4]
+    
+    for row in Funds.findAll("tr"):
+        cells = row.findAll('td')
+        if len(cells)==7:
+            if cells[0].a:
+                A.append(cells[0].find(text=True))
+                B.append(cells[2].find(text=True))
+                C.append(cells[5].find(text=True))
+                D.append(cells[0].a['href'])
+
+    Funds.df=pd.DataFrame(A,columns=['Fund'])
+    Funds.df['Category']=B
+    Funds.df['AUM in Cr']=C
+    Funds.df['URL']=D
+
+
+# This is optional code to shorlist funds as there are number of smaller funds
+# If Asset Under Management is restricted to INR 500 crore (INR 5 billion), then 241 funds are shortlisted
+
+Funds.df['URL'] = "http://www.moneycontrol.com"+ Funds.df['URL']
+Funds.df['AUM in Cr'] = Funds.df['AUM in Cr'].str.replace(',', '').astype(float)
+FundsShortlist = Funds.df[Funds.df['AUM in Cr']>500]
+FundsShortlist
+
