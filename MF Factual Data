@@ -67,3 +67,100 @@ Funds.df['AUM in Cr'] = Funds.df['AUM in Cr'].str.replace(',', '').astype(float)
 FundsShortlist = Funds.df[Funds.df['AUM in Cr']>500]
 FundsShortlist
 
+# Creating factual data frame for the list of all MF or shortlisted funds
+# Fields extracted are - Fund Family, Fund Class, Fund Type, Investment Plan, Launch Date
+# Benchmark, Asset Size, Minimum Investment, Investment Manager, AMFI code
+
+# Empty dataframes for storing data
+
+MainData = pd.DataFrame(np.nan,index=['Name','AMFI Code','Fund Family','Fund Class','Fund Type','Investment Plan','Launch Date',
+                                     'Benchmark','Asset Size', 'Minimum Investment','Fund Manager','Holdings',
+                                     'Sector Allocation','Asset Allocation'],columns=['1'])
+TestData = pd.Series(np.nan,index=['Name','AMFI Code','Fund Family','Fund Class','Fund Type','Investment Plan','Launch Date',
+                                     'Benchmark','Asset Size', 'Minimum Investment','Fund Manager','Holdings',
+                                     'Sector Allocation','Asset Allocation'])
+                                     
+# Getting required data in loop
+
+i=0
+for url in urls:
+    page = urllib.request.urlopen(url)
+    soup = BeautifulSoup(page, "html.parser")
+    if soup.title.string is not None:
+        TestData['Name'] = soup.title.string.split('|')[0].split('[', 1)[0]
+        TestData['AMFI Code'] = soup.findAll('div',class_='bsns_pcst FL')[0].findAll('span')[3].string
+        TestData['Fund Family']=soup.find('div', class_='mutfnd_greybar clearfix').find_all('div', class_='mufndBx')[3].find_all('a')[0].string
+        TestData['Fund Class']=soup.find('div', class_='mutfnd_greybar clearfix').find_all('div', class_='mufndBx')[4].find_all('a')[0].string
+        TestData['Fund Type']=soup.find('ul', class_='investr_info').find_all('li')[0].find('p').string
+        TestData['Investment Plan']=soup.find('ul', class_='investr_info').find_all('li')[1].find('p').string
+        TestData['Launch Date']=soup.find('ul', class_='investr_info').find_all('li')[2].find('p').string
+        TestData['Benchmark']=soup.find('ul', class_='investr_info').find_all('li')[3].find('p').string
+        TestData['Asset Size']=soup.find('ul', class_='investr_info').find_all('li')[4].find('p').string.split('(', 1)[0]
+        TestData['Minimum Investment']=soup.find('ul', class_='investr_info').find_all('li')[5].find('p').string
+        TestData['Fund Manager']=soup.find('ul', class_='investr_info').find_all('li')[8].find('p').string
+    
+        Holdings = soup.find_all('table')[7]
+        A=[]
+        B=[]
+        C=[]
+        D=[]
+        for row in Holdings.findAll("tr"):
+            cells = row.findAll('td')
+            if len(cells)==4:
+                A.append(cells[0].find(text=True))
+                B.append(cells[1].find(text=True))
+                C.append(cells[2].find(text=True))
+                D.append(cells[3].find(text=True))
+            
+        Holdings.df=pd.DataFrame(A,columns=['Company'])
+        Holdings.df['Sector']=B
+        Holdings.df['Value INR Cr']=C
+        Holdings.df['% Holding']=D        
+    
+        TestData['Holdings']=Holdings.df
+    
+        SectorAllocation = soup.find_all('table')[5]
+        E=[]
+        F=[]
+        for row in SectorAllocation.findAll("tr"):
+            cells = row.findAll('td')
+            if len(cells)==4:
+                E.append(cells[0].find(text=True))
+                F.append(cells[1].find(text=True))
+   
+        SectorAllocation.df=pd.DataFrame(E,columns=['Sector'])
+        SectorAllocation.df['Allocation %']=F
+
+        TestData['Sector Allocation']=SectorAllocation.df
+
+        AssetAllocation = soup.find_all('table')[6]
+        if AssetAllocation.string is not None:
+            G=[]
+            H=[]
+            for row in AssetAllocation.findAll("tr"):
+                if (row.string is not None):
+                    if (row.string is not 'No Sector Allocation Data Available'):
+                        cells = row.findAll('td')
+                        G.append(cells[0].find(text=True))
+                        H.append(cells[1].find(text=True))
+
+            AssetAllocation.df=pd.DataFrame(G,columns=['Category'])
+            AssetAllocation.df['Allocation %']=H
+    
+            TestData['Asset Allocation']=AssetAllocation.df
+    
+        MainData[i]= TestData
+        i=i+1
+    
+del MainData['1']    
+
+new_header = MainData.iloc[0]
+MainData = MainData[1:]
+MainData.columns = new_header
+
+# So we have to tables MainData, which contains factual data, and NAV, which contains NAV data.
+# Some fields of the factual data such as asset size, sector allocation need to be updated on the quarterly basis
+# NAV needs to be updated daily
+
+# NAV and MainData tables can be joined on AMFI code to get a combined table.
+# It is recommended to join these table only when required as NAV part is updated daily, while other is almost static
